@@ -23,6 +23,7 @@ export default function LoginPage() {
   const normalized=phone.replace(/[\s()-]/g,"");
   const {data,error}=await supabase.auth.verifyOtp({phone:normalized,token:otp.trim(),type:"sms"});
   if(error){setError(error.message);setBusy(false);return;}
+  if(!data.user){setError("OTP verification did not return a user. Please retry.");setBusy(false);return;}
   const {data:profile,error:profileError}=await supabase.from("technician_profiles").select("user_id,full_name,active").eq("user_id",data.user.id).maybeSingle();
   if(profileError||!profile||!profile.active){await supabase.auth.signOut();setError("This phone is not enabled as an active VGS technician. Contact your administrator.");setBusy(false);return;}
   router.replace("/");router.refresh();
