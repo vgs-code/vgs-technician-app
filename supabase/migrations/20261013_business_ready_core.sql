@@ -94,6 +94,8 @@ drop policy if exists "Technicians can read own profile" on public.technician_pr
 create policy "Technicians can read own profile" on public.technician_profiles for select to authenticated using (user_id = auth.uid() and active = true);
 drop policy if exists "VGS admin manages customers" on public.customers;
 create policy "VGS admin manages customers" on public.customers for all to authenticated using (public.vgs_is_admin()) with check (public.vgs_is_admin());
+drop policy if exists "Technicians read assigned customers" on public.customers;
+create policy "Technicians read assigned customers" on public.customers for select to authenticated using (exists (select 1 from public.service_jobs j where j.customer_id = customers.id and j.technician_user_id = auth.uid()));
 drop policy if exists "VGS admin manages all jobs" on public.service_jobs;
 create policy "VGS admin manages all jobs" on public.service_jobs for all to authenticated using (public.vgs_is_admin()) with check (public.vgs_is_admin());
 drop policy if exists "Technicians read assigned jobs" on public.service_jobs;
