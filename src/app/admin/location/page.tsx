@@ -1,148 +1,36 @@
 "use client";
-
-import { useCallback, useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
-import { LogOut, MapPin, RefreshCw, ShieldCheck, Clock, Search, ExternalLink } from "lucide-react";
-
-const ADMIN_EMAIL = "vashishthglobalsolutions@gmail.com";
-
-type Punch = {
-  id: string;
-  technician_name: string;
-  technician_code: string;
-  latitude: number;
-  longitude: number;
-  accuracy_meters: number | null;
-  punched_at: string;
-  punch_type: string;
-};
-
-export default function AdminLocationPage() {
-  const [email, setEmail] = useState("");
-  const [sessionReady, setSessionReady] = useState(false);
-  const [authorized, setAuthorized] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
-  const [punches, setPunches] = useState<Punch[]>([]);
-  const [query, setQuery] = useState("");
-  const [day, setDay] = useState("all");
-
-  const checkSession = useCallback(async () => {
-    const { data } = await supabase.auth.getSession();
-    const currentEmail = data.session?.user.email?.toLowerCase() || "";
-    setEmail(currentEmail);
-    setAuthorized(currentEmail === ADMIN_EMAIL);
-    setSessionReady(true);
-  }, []);
-
-  const loadPunches = useCallback(async () => {
-    const { data } = await supabase.auth.getSession();
-    if (data.session?.user.email?.toLowerCase() !== ADMIN_EMAIL) {
-      setAuthorized(false);
-      return;
-    }
-    setBusy(true);
-    setError("");
-    const { data: rows, error: fetchError } = await supabase
-      .from("technician_location_punches")
-      .select("id,technician_name,technician_code,latitude,longitude,accuracy_meters,punched_at,punch_type")
-      .order("punched_at", { ascending: false })
-      .limit(500);
-    if (fetchError) {
-      setError("Could not load attendance. Confirm the admin email policy is active and the account has signed in.");
-    } else {
-      setPunches((rows || []) as Punch[]);
-    }
-    setBusy(false);
-  }, []);
-
-  useEffect(() => {
-    void checkSession();
-    const { data: listener } = supabase.auth.onAuthStateChange(() => {
-      void checkSession();
-    });
-    return () => listener.subscription.unsubscribe();
-  }, [checkSession]);
-
-  useEffect(() => {
-    if (authorized) void loadPunches();
-  }, [authorized, loadPunches]);
-
-  async function sendLoginLink(e: React.FormEvent) {
-    e.preventDefault();
-    setSending(true);
-    setNotice("");
-    setError("");
-    const { error: authError } = await supabase.auth.signInWithOtp({
-      email: ADMIN_EMAIL,
-      options: { emailRedirectTo: window.location.origin + "/admin/location" },
-    });
-    if (authError) setError("Login link could not be sent. Check Supabase Auth email settings.");
-    else setNotice("A secure sign-in link has been requested for " + ADMIN_EMAIL + ". Check that inbox and open the link on this device.");
-    setSending(false);
-  }
-
-  async function signOut() {
-    await supabase.auth.signOut();
-    setAuthorized(false);
-    setEmail("");
-    setPunches([]);
-  }
-
-  const visiblePunches = punches.filter((p) => {
-    const q = query.trim().toLowerCase();
-    const matches = !q || p.technician_name.toLowerCase().includes(q) || p.technician_code.toLowerCase().includes(q);
-    if (!matches) return false;
-    if (day === "all") return true;
-    const date = new Date(p.punched_at);
-    const now = new Date();
-    if (day === "today") return date.toDateString() === now.toDateString();
-    const cutoff = new Date();
-    cutoff.setDate(now.getDate() - 7);
-    return date >= cutoff;
-  });
-
-  if (!sessionReady) return <main className="min-h-screen bg-slate-50 p-8 text-slate-600">Checking secure admin session...</main>;
-
-  if (!authorized) return <main className="min-h-screen bg-slate-50 px-4 py-10">
-    <section className="mx-auto max-w-md rounded-3xl border border-slate-200 bg-white p-7 shadow-sm">
-      <div className="mb-5 grid h-14 w-14 place-items-center rounded-2xl bg-[#102c46] text-white"><ShieldCheck size={28}/></div>
-      <p className="text-sm font-semibold text-cyan-800">VASHISHTH HOME SERVICE</p>
-      <h1 className="mt-2 text-2xl font-bold text-slate-900">Admin location dashboard</h1>
-      <p className="mt-3 text-sm leading-6 text-slate-600">Sign in using a one-time secure email link. Only the configured VGS administrator account can view technician coordinates and attendance.</p>
-      <div className="mt-5 rounded-xl bg-slate-50 p-3 text-sm text-slate-700"><span className="font-semibold">Administrator</span><br/>{ADMIN_EMAIL}</div>
-      <form onSubmit={sendLoginLink} className="mt-5">
-        <button disabled={sending} className="w-full rounded-xl bg-[#087e8b] px-4 py-3 font-semibold text-white disabled:opacity-60">{sending ? "Requesting sign-in link..." : "Email me a secure sign-in link"}</button>
-      </form>
-      {notice && <p className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
-      {error && <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-      {email && email !== ADMIN_EMAIL && <p className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Signed in as {email}, but this account is not the configured administrator. Sign out before trying the administrator inbox.</p>}
-      <p className="mt-5 text-xs leading-5 text-slate-500">Location records are sensitive. Share access only with authorized staff and use them according to your technician notice and company policy.</p>
-    </section>
-  </main>;
-
-  return <main className="min-h-screen bg-slate-50 px-4 py-6 md:px-8">
-    <div className="mx-auto max-w-6xl">
-      <header className="flex flex-col justify-between gap-4 rounded-3xl bg-[#102c46] p-6 text-white md:flex-row md:items-center">
-        <div><div className="flex items-center gap-2 text-cyan-200"><ShieldCheck size={18}/><span className="text-xs font-bold tracking-wide">VGS SECURE ADMIN</span></div><h1 className="mt-2 text-2xl font-bold">Technician location dashboard</h1><p className="mt-1 text-sm text-slate-300">Signed in as {email}</p></div>
-        <div className="flex gap-2"><button onClick={() => void loadPunches()} className="flex items-center gap-2 rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/20"><RefreshCw size={16}/>Refresh</button><button onClick={() => void signOut()} className="flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-900"><LogOut size={16}/>Sign out</button></div>
-      </header>
-      <div className="mt-5 grid gap-4 sm:grid-cols-3">
-        <div className="rounded-2xl border bg-white p-5"><p className="text-sm text-slate-500">Records loaded</p><p className="mt-2 text-3xl font-bold text-slate-900">{punches.length}</p></div>
-        <div className="rounded-2xl border bg-white p-5"><p className="text-sm text-slate-500">Matching records</p><p className="mt-2 text-3xl font-bold text-slate-900">{visiblePunches.length}</p></div>
-        <div className="rounded-2xl border bg-white p-5"><p className="text-sm text-slate-500">Data access</p><p className="mt-2 text-lg font-bold text-emerald-700">Admin authenticated</p></div>
-      </div>
-      <section className="mt-5 rounded-2xl border bg-white p-4">
-        <div className="grid gap-3 md:grid-cols-[1fr_180px]">
-          <label className="flex items-center gap-2 rounded-xl border px-3"><Search size={18} className="text-slate-400"/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search technician name or ID" className="w-full py-3 outline-none"/></label>
-          <select value={day} onChange={e => setDay(e.target.value)} className="rounded-xl border px-3 py-3"><option value="all">All loaded records</option><option value="today">Today</option><option value="week">Last 7 days</option></select>
-        </div>
-        {error && <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-        {busy ? <p className="p-8 text-center text-slate-500">Loading attendance...</p> : visiblePunches.length === 0 ? <div className="p-10 text-center"><MapPin className="mx-auto text-slate-300" size={34}/><p className="mt-3 font-semibold text-slate-800">No location records found</p><p className="mt-1 text-sm text-slate-500">Records will appear after technicians submit a location punch.</p></div> : <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-slate-50 text-slate-600"><tr><th className="p-3">Technician</th><th className="p-3">Date and time</th><th className="p-3">Coordinates</th><th className="p-3">Accuracy</th><th className="p-3">Map</th></tr></thead><tbody>{visiblePunches.map(p => <tr key={p.id} className="border-t"><td className="p-3"><p className="font-semibold text-slate-900">{p.technician_name}</p><p className="text-xs text-slate-500">{p.technician_code}</p></td><td className="p-3"><span className="flex items-center gap-2"><Clock size={15} className="text-slate-400"/>{new Date(p.punched_at).toLocaleString("en-IN", {dateStyle:"medium",timeStyle:"short"})}</span></td><td className="p-3 font-mono text-xs">{p.latitude.toFixed(6)}, {p.longitude.toFixed(6)}</td><td className="p-3">{p.accuracy_meters == null ? "Not recorded" : "±" + Math.round(p.accuracy_meters) + " m"}</td><td className="p-3"><a className="inline-flex items-center gap-1 font-semibold text-cyan-800 underline" target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${p.latitude},${p.longitude}`}>Open map <ExternalLink size={13}/></a></td></tr>)}</tbody></table></div>}
-        <p className="mt-4 text-xs text-slate-500">Shows the latest 500 location punches. Coordinates are recorded only when a technician presses the punch button, not by continuous background tracking.</p>
-      </section>
-    </div>
-  </main>;
+import {useCallback,useEffect,useState} from "react";
+import {supabase} from "@/lib/supabase";
+import {ShieldCheck,LogOut,RefreshCw,Users,ClipboardList,FileText,MapPin,Search,Plus,ExternalLink} from "lucide-react";
+const ADMIN="vashishthglobalsolutions@gmail.com";
+type AnyRow=Record<string,any>;
+export default function AdminPage(){
+ const [sessionReady,setSessionReady]=useState(false),[email,setEmail]=useState(""),[authorized,setAuthorized]=useState(false),[sending,setSending]=useState(false),[notice,setNotice]=useState(""),[error,setError]=useState(""),[tab,setTab]=useState("Jobs"),[jobs,setJobs]=useState<AnyRow[]>([]),[customers,setCustomers]=useState<AnyRow[]>([]),[invoices,setInvoices]=useState<AnyRow[]>([]),[punches,setPunches]=useState<AnyRow[]>([]),[technicians,setTechnicians]=useState<AnyRow[]>([]),[q,setQ]=useState(""),[busy,setBusy]=useState(false);
+ const [cName,setCName]=useState(""),[cPhone,setCPhone]=useState(""),[cAddress,setCAddress]=useState(""),[cArea,setCArea]=useState("");
+ const [jCustomer,setJCustomer]=useState(""),[jTech,setJTech]=useState(""),[jService,setJService]=useState(""),[jProblem,setJProblem]=useState(""),[jDate,setJDate]=useState(""),[jAmount,setJAmount]=useState("499");
+ const [iCustomer,setICustomer]=useState(""),[iJob,setIJob]=useState(""),[iDesc,setIDesc]=useState("Service charge"),[iAmount,setIAmount]=useState("499"),[iTax,setITax]=useState("18");
+ const check=useCallback(async()=>{const {data}=await supabase.auth.getSession();const em=data.session?.user.email?.toLowerCase()||"";setEmail(em);setAuthorized(em===ADMIN);setSessionReady(true);},[]);
+ const load=useCallback(async()=>{const {data}=await supabase.auth.getSession();if(data.session?.user.email?.toLowerCase()!==ADMIN){setAuthorized(false);return;}setBusy(true);setError("");const [a,b,c,d,e]=await Promise.all([supabase.from("service_jobs").select("*,customers(name,phone,address)").order("created_at",{ascending:false}).limit(500),supabase.from("customers").select("*").order("created_at",{ascending:false}).limit(500),supabase.from("invoices").select("*,customers(name,phone)").order("created_at",{ascending:false}).limit(500),supabase.from("technician_location_punches").select("*").order("punched_at",{ascending:false}).limit(500),supabase.from("technician_profiles").select("user_id,technician_code,full_name,phone,active").order("full_name")]);const fail=[a,b,c,d,e].find(x=>x.error);if(fail)setError("Some data could not be loaded: "+fail.error.message);setJobs(a.data||[]);setCustomers(b.data||[]);setInvoices(c.data||[]);setPunches(d.data||[]);setTechnicians(e.data||[]);setBusy(false);},[]);
+ useEffect(()=>{void check();const {data:listener}=supabase.auth.onAuthStateChange(()=>{void check();});return()=>listener.subscription.unsubscribe();},[check]);
+ useEffect(()=>{if(authorized)void load();},[authorized,load]);
+ async function send(e:React.FormEvent){e.preventDefault();setSending(true);setError("");setNotice("");const {error}=await supabase.auth.signInWithOtp({email:ADMIN,options:{emailRedirectTo:window.location.origin+"/admin/location"}});if(error)setError(error.message);else setNotice("Secure sign-in link requested. Check "+ADMIN+".");setSending(false);}
+ async function addCustomer(e:React.FormEvent){e.preventDefault();setError("");const {error}=await supabase.from("customers").insert({name:cName.trim(),phone:cPhone.trim(),address:cAddress.trim(),area:cArea.trim()||null});if(error)setError(error.message);else{setCName("");setCPhone("");setCAddress("");setCArea("");setNotice("Customer created.");await load();}}
+ async function addJob(e:React.FormEvent){e.preventDefault();setError("");if(!jCustomer){setError("Create/select a customer first.");return;}const num="VGS-"+Date.now().toString().slice(-8);const {error}=await supabase.from("service_jobs").insert({job_number:num,customer_id:jCustomer,technician_user_id:jTech||null,service_name:jService.trim(),problem_description:jProblem.trim()||null,scheduled_at:jDate?new Date(jDate).toISOString():null,estimated_amount:Number(jAmount)||0,status:"assigned"});if(error)setError(error.message);else{setJService("");setJProblem("");setJDate("");setNotice("Job created and assigned.");await load();}}
+ async function addInvoice(e:React.FormEvent){e.preventDefault();setError("");const subtotal=Number(iAmount)||0;const tax=Number(iTax)||0;const taxAmount=Math.round(subtotal*tax)/100;const {data:inv,error}=await supabase.from("invoices").insert({invoice_number:"INV-"+Date.now().toString().slice(-8),customer_id:iCustomer,job_id:iJob||null,status:"issued",subtotal,tax_rate:tax,tax_amount:taxAmount,total_amount:subtotal+taxAmount,amount_paid:0,notes:iDesc.trim()}).select().single();if(error)setError(error.message);else{const {error:itemError}=await supabase.from("invoice_items").insert({invoice_id:inv.id,description:iDesc.trim()||"Service charge",quantity:1,unit_price:subtotal});if(itemError)setError("Invoice header saved, but item could not be saved: "+itemError.message);else setNotice("Invoice created. Total ₹"+(subtotal+taxAmount).toFixed(2));await load();}}
+ async function setJobStatus(id:string,status:string){const {error}=await supabase.from("service_jobs").update({status,updated_at:new Date().toISOString(),...(status==="completed"?{completed_at:new Date().toISOString()}:{})}).eq("id",id);if(error)setError(error.message);else{setNotice("Job status updated.");await load();}}
+ async function setInvoiceStatus(id:string,status:string){const {error}=await supabase.from("invoices").update({status,updated_at:new Date().toISOString()}).eq("id",id);if(error)setError(error.message);else await load();}
+ if(!sessionReady)return <main className="min-h-screen p-8 text-slate-600">Checking secure admin session…</main>;
+ if(!authorized)return <main className="min-h-screen bg-slate-50 px-4 py-10"><section className="mx-auto max-w-md rounded-3xl border bg-white p-7 shadow-sm"><div className="mb-5 grid h-14 w-14 place-items-center rounded-2xl bg-[#102c46] text-white"><ShieldCheck size={28}/></div><p className="text-sm font-semibold text-cyan-800">VASHISHTH HOME SERVICE</p><h1 className="mt-2 text-2xl font-bold">VGS Business Admin</h1><p className="mt-3 text-sm leading-6 text-slate-600">Sign in with the authorized administrator email to manage customers, jobs, invoices and attendance.</p><p className="mt-4 rounded-xl bg-slate-50 p-3 text-sm">{ADMIN}</p><form onSubmit={send} className="mt-5"><button disabled={sending} className="w-full rounded-xl bg-[#087e8b] px-4 py-3 font-semibold text-white">{sending?"Requesting link…":"Email secure sign-in link"}</button></form>{notice&&<p className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}{error&&<p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}<p className="mt-5 text-xs leading-5 text-slate-500">Technician sign-in uses SMS OTP at /login. Admin access is restricted to the configured email and database policies.</p></section></main>;
+ const tabs=["Jobs","Customers","Invoices","Attendance","Technicians"];
+ const shownJobs=jobs.filter(j=>[j.job_number,j.service_name,j.customers?.name||"",j.status].some(v=>String(v).toLowerCase().includes(q.toLowerCase())));
+ return <main className="min-h-screen bg-slate-50 px-4 py-6 md:px-8"><div className="mx-auto max-w-7xl"><header className="flex flex-col justify-between gap-4 rounded-3xl bg-[#102c46] p-6 text-white md:flex-row md:items-center"><div><div className="flex items-center gap-2 text-cyan-200"><ShieldCheck size={18}/><span className="text-xs font-bold tracking-wide">VGS BUSINESS OS</span></div><h1 className="mt-2 text-2xl font-bold">Operations dashboard</h1><p className="mt-1 text-sm text-slate-300">Signed in as {email}</p></div><div className="flex gap-2"><button onClick={()=>void load()} className="flex items-center gap-2 rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold"><RefreshCw size={16}/>Refresh</button><button onClick={async()=>{await supabase.auth.signOut();setAuthorized(false);}} className="flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-900"><LogOut size={16}/>Sign out</button></div></header>
+ <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{[[ClipboardList,"Jobs",jobs.length],[Users,"Customers",customers.length],[FileText,"Invoices",invoices.length],[MapPin,"Attendance punches",punches.length]].map(([Icon,label,value]:any)=><div key={label} className="rounded-2xl border bg-white p-5"><div className="flex items-center gap-2 text-sm text-slate-500"><Icon size={17}/>{label}</div><p className="mt-2 text-3xl font-bold">{value}</p></div>)}</div>
+ <div className="mt-5 flex gap-2 overflow-x-auto">{tabs.map(t=><button key={t} onClick={()=>setTab(t)} className={"whitespace-nowrap rounded-xl px-4 py-3 text-sm font-semibold "+(tab===t?"bg-[#102c46] text-white":"border bg-white text-slate-700")}>{t}</button>)}</div>
+ {(notice||error)&&<div className={"mt-4 rounded-xl p-3 text-sm "+(error?"bg-red-50 text-red-800":"bg-emerald-50 text-emerald-800")}>{error||notice}</div>}
+ {tab==="Customers"&&<section className="mt-4 grid gap-4 lg:grid-cols-[360px_1fr]"><form onSubmit={addCustomer} className="rounded-2xl border bg-white p-5"><h2 className="font-bold">Add customer</h2><input required value={cName} onChange={e=>setCName(e.target.value)} placeholder="Customer name" className="mt-4 w-full rounded-xl border p-3 text-sm"/><input required value={cPhone} onChange={e=>setCPhone(e.target.value)} placeholder="Mobile number" className="mt-3 w-full rounded-xl border p-3 text-sm"/><input required value={cAddress} onChange={e=>setCAddress(e.target.value)} placeholder="Full address" className="mt-3 w-full rounded-xl border p-3 text-sm"/><input value={cArea} onChange={e=>setCArea(e.target.value)} placeholder="Area / locality" className="mt-3 w-full rounded-xl border p-3 text-sm"/><button className="mt-4 w-full rounded-xl bg-[#087e8b] py-3 font-semibold text-white"><Plus className="mr-1 inline" size={16}/>Save customer</button></form><div className="rounded-2xl border bg-white p-5"><h2 className="font-bold">Customer directory ({customers.length})</h2><div className="mt-3 space-y-2">{customers.map(c=><div key={c.id} className="rounded-xl border p-3"><p className="font-semibold">{c.name}</p><p className="text-sm text-slate-500">{c.phone} · {c.address}</p></div>)}</div></div></section>}
+ {tab==="Jobs"&&<section className="mt-4 grid gap-4 lg:grid-cols-[360px_1fr]"><form onSubmit={addJob} className="rounded-2xl border bg-white p-5"><h2 className="font-bold">Create service job</h2><label className="mt-4 block text-sm font-medium">Customer</label><select required value={jCustomer} onChange={e=>setJCustomer(e.target.value)} className="mt-2 w-full rounded-xl border p-3 text-sm"><option value="">Select customer</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name} · {c.phone}</option>)}</select><label className="mt-3 block text-sm font-medium">Assign technician</label><select value={jTech} onChange={e=>setJTech(e.target.value)} className="mt-2 w-full rounded-xl border p-3 text-sm"><option value="">Unassigned</option>{technicians.filter(t=>t.active).map(t=><option key={t.user_id} value={t.user_id}>{t.full_name} · {t.technician_code}</option>)}</select><input required value={jService} onChange={e=>setJService(e.target.value)} placeholder="Service e.g. RO Repair" className="mt-3 w-full rounded-xl border p-3 text-sm"/><textarea value={jProblem} onChange={e=>setJProblem(e.target.value)} placeholder="Customer complaint / job notes" className="mt-3 w-full rounded-xl border p-3 text-sm"/><label className="mt-3 block text-sm">Appointment date and time</label><input type="datetime-local" value={jDate} onChange={e=>setJDate(e.target.value)} className="mt-2 w-full rounded-xl border p-3 text-sm"/><input required type="number" min="0" step="0.01" value={jAmount} onChange={e=>setJAmount(e.target.value)} placeholder="Estimate ₹" className="mt-3 w-full rounded-xl border p-3 text-sm"/><button className="mt-4 w-full rounded-xl bg-[#087e8b] py-3 font-semibold text-white"><Plus className="mr-1 inline" size={16}/>Create job</button></form><div className="rounded-2xl border bg-white p-5"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-bold">Service jobs ({jobs.length})</h2><label className="flex items-center gap-2 rounded-xl border px-3"><Search size={16}/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search jobs" className="py-2 text-sm outline-none"/></label></div><div className="mt-3 space-y-3">{shownJobs.map(j=><div key={j.id} className="rounded-xl border p-4"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-xs text-slate-400">{j.job_number}</p><p className="mt-1 font-bold">{j.service_name} · {j.customers?.name}</p><p className="text-sm text-slate-500">{j.customers?.phone} · {j.customers?.address}</p><p className="mt-1 text-xs text-slate-500">{j.scheduled_at?new Date(j.scheduled_at).toLocaleString("en-IN"):"No appointment set"} · ₹{Number(j.estimated_amount).toFixed(2)}</p></div><select value={j.status} onChange={e=>void setJobStatus(j.id,e.target.value)} className="rounded-lg border p-2 text-xs">{["assigned","accepted","on_the_way","in_progress","completed","cancelled"].map(s=><option key={s} value={s}>{s.replaceAll("_"," ")}</option>)}</select></div><p className="mt-2 text-sm text-slate-600">{j.problem_description}</p></div>)}</div></div></section>}
+ {tab==="Invoices"&&<section className="mt-4 grid gap-4 lg:grid-cols-[360px_1fr]"><form onSubmit={addInvoice} className="rounded-2xl border bg-white p-5"><h2 className="font-bold">Create invoice</h2><select required value={iCustomer} onChange={e=>setICustomer(e.target.value)} className="mt-4 w-full rounded-xl border p-3 text-sm"><option value="">Select customer</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name} · {c.phone}</option>)}</select><select value={iJob} onChange={e=>setIJob(e.target.value)} className="mt-3 w-full rounded-xl border p-3 text-sm"><option value="">No linked job</option>{jobs.map(j=><option key={j.id} value={j.id}>{j.job_number} · {j.service_name}</option>)}</select><input required value={iDesc} onChange={e=>setIDesc(e.target.value)} placeholder="Invoice description" className="mt-3 w-full rounded-xl border p-3 text-sm"/><input required type="number" min="0" step="0.01" value={iAmount} onChange={e=>setIAmount(e.target.value)} placeholder="Subtotal" className="mt-3 w-full rounded-xl border p-3 text-sm"/><label className="mt-3 block text-sm">GST / tax rate (%)</label><input required type="number" min="0" max="100" step="0.01" value={iTax} onChange={e=>setITax(e.target.value)} className="mt-2 w-full rounded-xl border p-3 text-sm"/><p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm">Total: ₹{(Number(iAmount||0)*(1+Number(iTax||0)/100)).toFixed(2)}</p><button className="mt-4 w-full rounded-xl bg-[#087e8b] py-3 font-semibold text-white">Create invoice</button></form><div className="rounded-2xl border bg-white p-5"><h2 className="font-bold">Invoices ({invoices.length})</h2><div className="mt-3 space-y-3">{invoices.map(i=><div key={i.id} className="rounded-xl border p-4"><p className="font-bold">{i.invoice_number} · {i.customers?.name}</p><p className="text-sm text-slate-500">{i.issue_date} · {i.notes}</p><p className="mt-1 text-lg font-bold">₹{Number(i.total_amount).toFixed(2)}</p><div className="mt-2 flex items-center gap-3"><select value={i.status} onChange={e=>void setInvoiceStatus(i.id,e.target.value)} className="rounded-lg border p-2 text-xs">{["draft","issued","partially_paid","paid","void"].map(s=><option key={s} value={s}>{s.replaceAll("_"," ")}</option>)}</select><span className="text-xs text-slate-500">Paid ₹{Number(i.amount_paid).toFixed(2)}</span></div></div>)}</div></div></section>}
+ {tab==="Attendance"&&<section className="mt-4 overflow-x-auto rounded-2xl border bg-white p-5"><h2 className="font-bold">Attendance and location punches</h2><table className="mt-4 w-full min-w-[700px] text-left text-sm"><thead><tr className="bg-slate-50"><th className="p-3">Technician</th><th className="p-3">Type</th><th className="p-3">Timestamp</th><th className="p-3">Accuracy</th><th className="p-3">Map</th></tr></thead><tbody>{punches.map(p=><tr key={p.id} className="border-t"><td className="p-3">{p.technician_name}<p className="text-xs text-slate-500">{p.technician_code}</p></td><td className="p-3">{p.punch_type}</td><td className="p-3">{new Date(p.punched_at).toLocaleString("en-IN")}</td><td className="p-3">{p.accuracy_meters==null?"N/A":"±"+Math.round(p.accuracy_meters)+" m"}</td><td className="p-3"><a target="_blank" rel="noreferrer" href={"https://www.google.com/maps?q="+p.latitude+","+p.longitude} className="text-cyan-800 underline">Open map <ExternalLink className="inline" size={12}/></a></td></tr>)}</tbody></table></section>}
+ {tab==="Technicians"&&<section className="mt-4 rounded-2xl border bg-white p-5"><h2 className="font-bold">Technician roster</h2><p className="mt-2 text-sm text-slate-500">Create the Auth user in Supabase Authentication first, with the technician's phone number verified, then add a matching row to technician_profiles with that Auth user UUID, technician code, name and exact phone number. Do not share service-role keys.</p><div className="mt-4 space-y-2">{technicians.map(t=><div key={t.user_id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3"><div><p className="font-semibold">{t.full_name} · {t.technician_code}</p><p className="text-sm text-slate-500">{t.phone}</p><p className="text-xs text-slate-400">{t.user_id}</p></div><span className={"rounded-full px-3 py-1 text-xs "+(t.active?"bg-emerald-50 text-emerald-800":"bg-red-50 text-red-800")}>{t.active?"Active":"Inactive"}</span></div>)}</div></section>}
+ {busy&&<p className="mt-4 text-sm text-slate-500">Refreshing records…</p>}<p className="mt-6 text-xs text-slate-500">VGS internal operations. Keep customer and technician data confidential. Location is recorded only by an explicit check-in or check-out action.</p></div></main>;
 }
