@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { ArrowRight, CheckCircle2, Clock3, MapPin, Phone, ShieldCheck, Wrench } from "lucide-react";
@@ -8,7 +8,7 @@ import { ArrowRight, CheckCircle2, Clock3, MapPin, Phone, ShieldCheck, Wrench } 
 const TENANT_ID = "64a74da0-a831-4ae8-a914-2f0db19a1443";
 type Service = { id: string; slug: string; name: string; category: string; short_description: string | null; base_price: number; duration_minutes: number };
 
-export default function BookServicePage() {
+function BookServicePageContent() {
   const searchParams = useSearchParams();
   const [services, setServices] = useState<Service[]>([]);
   const [serviceId, setServiceId] = useState("");
@@ -113,3 +113,6 @@ export default function BookServicePage() {
     <footer className="border-t bg-white"><div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-6 text-sm text-slate-500"><span>© {new Date().getFullYear()} Vashishth Global Solutions</span><span>Lucknow · <a href="tel:9580145185" className="font-semibold text-[#087e8b]">9580145185</a></span></div></footer>
   </main>;
 }
+
+
+export default function BookServicePage() { return <Suspense fallback={<main className="min-h-screen p-8 text-slate-700">Loading booking form…</main>}><BookServicePageContent /></Suspense>; }
