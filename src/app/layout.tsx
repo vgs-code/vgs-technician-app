@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "VGS Technician",
-  description: "Technician partner app for Vashishth Home Service",
+  title: "Home Appliance Repair & Handyman Services in Lucknow | Vashishth Home Service",
+  description: "Book RO, AC, fridge, washing machine, chimney, geyser and microwave repair plus plumber, electrician, carpenter, painter, mason and pest control services in Lucknow with Vashishth Home Service.",
   manifest: "/manifest.json",
 };
 
