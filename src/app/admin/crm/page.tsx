@@ -33,7 +33,7 @@ export default function CRMPage() {
    supabase.from("technician_profiles").select("user_id,technician_code,full_name,phone,active").order("full_name")
   ]);
   const first=[e,p,q,s,a,i,c,t].find(x=>x.error);
-  if(first) setError("Some CRM data could not load: "+first.error.message);
+  if(first?.error) setError("Some CRM data could not load: "+first.error.message);
   setExpenses(e.data||[]);setParts(p.data||[]);setQuotes(q.data||[]);setSalaries(s.data||[]);setAttendance(a.data||[]);setInvoices(i.data||[]);setCustomers(c.data||[]);setTechnicians(t.data||[]);setBusy(false);
  },[]);
  const check=useCallback(async()=>{const {data}=await supabase.auth.getSession();const em=data.session?.user.email?.toLowerCase()||"";setEmail(em);setAuthorized(em===ADMIN);setReady(true);},[]);
